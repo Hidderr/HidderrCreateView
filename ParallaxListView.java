@@ -13,7 +13,8 @@ import android.widget.ImageView;
 import android.widget.ListView;
 
 public class ParallaxListView extends ListView {
-
+    
+	
 	private ImageView iv;
 	/**
 	 * ImageView原始高度
