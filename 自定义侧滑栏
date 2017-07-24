@@ -1,0 +1,273 @@
+public class SlidingMenu extends FrameLayout {
+
+	private ViewDragHelper dragHelper;
+	private FloatEvaluator fV;
+	private IntEvaluator iv;
+	private OnDragStateChangeListener dragListener;
+	/**
+	 * SlidingMenu的测量宽度
+	 */
+	private int slidingMenuWidth;
+	/**
+	 * mainView可拖拽的范围
+	 */
+	private float dragRange;
+	/**
+	 * 侧边栏的view
+	 */
+	private View menuView;
+	/**
+	 * 主view
+	 */
+	private View mainView;
+	/**
+	 * slidingMenu默认的状态是关闭的
+	 */
+	private DragState currentState = DragState.CLOSE;
+	
+	public SlidingMenu(Context context) {
+		super(context);
+		init();
+	}
+	
+	public SlidingMenu(Context context, AttributeSet attrs) {
+		super(context, attrs);
+		init();
+	}
+
+	public SlidingMenu(Context context, AttributeSet attrs, int defStyle) {
+		super(context, attrs, defStyle);
+		init();
+	}
+	
+	@Override
+	public boolean onInterceptTouchEvent(MotionEvent ev) {
+		return dragHelper.shouldInterceptTouchEvent(ev);//用手势辅助类决定是否拦截事件
+	}
+
+	@Override
+	public boolean onTouchEvent(MotionEvent event) {
+		dragHelper.processTouchEvent(event);
+		return true;//消费事件
+	}
+	
+	@Override
+	protected void onFinishInflate() {//当布局加载完成，一般用于获取子view
+		super.onFinishInflate();
+		if(getChildCount()!=2){//默认只能处理两个view，超出则抛出异常
+			throw new IllegalArgumentException("SlidingMenu only have two child！！！");
+		}
+		menuView = getChildAt(0);
+		mainView = getChildAt(1);
+	}
+	
+	@Override//onMeasure调用完后调用此方法
+	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+		// TODO Auto-generated method stub
+		super.onSizeChanged(w, h, oldw, oldh);
+		slidingMenuWidth = getMeasuredWidth();
+		dragRange = slidingMenuWidth*0.6f;//子View可拖拽范围
+	}
+	
+	/*
+	 * 必须实现，用于平滑移动
+	 */
+	@Override
+	public void computeScroll() {
+		if(dragHelper.continueSettling(true)){//内部已经处理了移动
+			ViewCompat.postInvalidateOnAnimation(SlidingMenu.this);//类似invalidate();
+		}
+	}
+	
+	/**
+	 * 初始化ViewDragHelper和FloatValue和IntValue
+	 */
+	private void init() {
+		dragHelper = ViewDragHelper.create(this, cb);//创建手势捕获辅助类，参数1要操作的view的父view,参数2回调
+		
+		fV = new FloatEvaluator();//float计算类
+		iv = new IntEvaluator();//int计算类
+	}
+	
+	
+	
+	
+	private ViewDragHelper.Callback cb = new ViewDragHelper.Callback() {
+		
+		/**
+		 * 用于判断是否捕获当前view的触摸事件
+		 * 
+		 * 参数 child 当前触摸的view
+		 * 
+		 *  return true：捕获并解析，false不处理
+		 * */
+		@Override
+		public boolean tryCaptureView(View child, int pointerId) {
+			// TODO Auto-generated method stub
+			return child==menuView || child==mainView;//需要操作的view
+			//return child==mainView;//需要操作的view
+		}
+		
+		/**
+		 * 控制child在水平方向的移动 left:
+		 * 表示ViewDragHelper认为你想让当前child的left改变的值,left=chile.getLeft()+dx dx:
+		 * 本次child水平方向移动的距离 return: 表示你真正想让child的left变成的值
+		 */
+		@Override//限制view的水平移动  left 是view移动后的left dx:水平移动的距离(与上次比较)
+		public int clampViewPositionHorizontal(View child, int left, int dx) {
+			if(child==mainView){
+				if(left<0)left=0;//限制mainView的左边
+				if(left>dragRange)left=(int) dragRange;//限制mainView的右边
+			}  
+			return left;
+		}
+		  
+		
+		/*@Override//限制view的竖直移动  top 是view移动后的top dy竖直移动的距离
+		public int clampViewPositionVertical(View child, int top, int dy) {
+			
+			return top;//0即不移动
+		}  */
+		
+		@Override//当操作view时，view位置改变时调用
+		public void onViewPositionChanged(View changedView, int left, int top,
+				int dx, int dy) {
+			/*if(changedView==mainView){
+				menuView.layout(menuView.getLeft()+dx/2, menuView.getTop(),
+						menuView.getRight()+dx/2, menuView.getBottom());
+			}*/
+			if(changedView==menuView){
+				//固定住menuView
+				menuView.layout(0, 0, menuView.getMeasuredWidth(),menuView.getMeasuredHeight());
+				//让mainView移动起来
+				int newLeft = mainView.getLeft()+dx;
+				System.out.println("dx.........  "+dx); 
+			if(newLeft<0)newLeft=0;//限制mainView的左边
+				if(newLeft>dragRange)newLeft=(int) dragRange;//限制mainView的右边
+				mainView.layout(newLeft,mainView.getTop()+dy,newLeft+mainView.getMeasuredWidth(),mainView.getBottom()+dy);
+			}
+			
+			float fraction = mainView.getLeft()/dragRange;//计算移动百分比
+			
+			executeAnim(fraction);//执行动画
+			
+			if(fraction==0 && currentState!=DragState.CLOSE){
+				currentState = DragState.CLOSE;//更改状态
+				if(dragListener!=null){dragListener.onClose();}//回调关闭方法
+			}else if(fraction==1f && currentState!=DragState.OPEN){
+				currentState = DragState.OPEN;//打开状态
+				if(dragListener!=null){dragListener.onOpen();}//回调打开方法
+			}
+			if(dragListener!=null){
+				dragListener.onDraging(fraction);//回调正在拖动方法
+			}
+		}
+		
+		@Override//用户抬起时调用
+		public void onViewReleased(View releasedChild, float xvel, float yvel) {
+			if(mainView.getLeft()<dragRange/2){//当用户滑动小于限定距离一半时，让其关闭，否则打开
+				close();//关闭侧边栏
+			}else{
+				open();//打开侧边栏
+			}
+			/*
+			 * xvel为水平滑动速度
+			 * 当用户水平滑动速度大于200，并且处于关闭状态，则打开侧边,
+			 * 当用户向左滑动，即速度为负值，小于-200则关闭侧边栏
+			 */
+			if(xvel>200 && currentState!=DragState.OPEN){
+				open();
+			}else if(xvel<-200 &&currentState!=DragState.CLOSE ){
+				close();
+			}
+		}
+		  
+		@Override//获取水平拖拽范围
+		public int getViewHorizontalDragRange(View child) {
+			// TODO Auto-generated method stub
+			return (int) dragRange;
+		}
+	};
+	
+	
+	
+	
+	/**枚举，slidingMenu的开关状态
+	 * @author Administrator
+	 *
+	 */
+	enum DragState{
+		OPEN,CLOSE;
+	}
+	
+	/**获取slidingMenu的开关状态
+	 * @return DragState
+	 */
+	public DragState getCurrentState(){
+		return currentState;
+	}
+	
+	/**
+	 * 打开侧边栏动画
+	 */
+	protected void open() {
+		dragHelper.smoothSlideViewTo(mainView, (int) dragRange, mainView.getTop());
+		ViewCompat.postInvalidateOnAnimation(SlidingMenu.this);
+	}
+
+	/**
+	 * 关闭侧边栏动画
+	 */
+	protected void close() {
+		dragHelper.smoothSlideViewTo(mainView, 0, mainView.getTop());
+		ViewCompat.postInvalidateOnAnimation(SlidingMenu.this);
+		
+	}
+
+	/**执行子view的动画
+	 * @param fraction 拖动的百分比
+	 */
+	protected void executeAnim(float fraction) {
+		/*
+		 * menuView执行缩放，透明，位移，动画
+		 */
+		ViewHelper.setAlpha(menuView, fV.evaluate(fraction, 0.3f, 1f));//从半透明到不透明
+		ViewHelper.setScaleX(menuView, fV.evaluate(fraction, 0.5f, 1f));//x轴放大
+		ViewHelper.setScaleY(menuView, fV.evaluate(fraction, 0.5f, 1f));//Y轴放大
+		ViewHelper.setTranslationX(menuView, fV.evaluate(fraction, -menuView.getMeasuredWidth(), 0));//从隐藏一半到出现
+		
+		/*
+		 * mainView，执行缩放
+		 */
+		ViewHelper.setScaleX(mainView, fV.evaluate(fraction, 1f,0.8f));//x轴缩小
+		ViewHelper.setScaleY(mainView, fV.evaluate(fraction, 1f,0.8f));//Y轴缩小
+		
+		/*
+		 * 给SlidingMenu背景添加黑色遮罩效果
+		 * mode：参数是指覆盖到上面
+		 */
+		getBackground().setColorFilter((Integer) ColorUtil.evaluateColor
+				(fraction, Color.RED,Color.TRANSPARENT), Mode.SRC_OVER);
+	}
+
+	public void setOnDragStateChangeListener(OnDragStateChangeListener dragListener){
+		this.dragListener = dragListener;}
+	/**侧边栏状态监听回调接口
+	 * @author Administrator
+	 *
+	 */
+	public interface OnDragStateChangeListener{
+		/**
+		 * 侧边栏被打开
+		 */
+		void onOpen();
+		/**
+		 * 侧边栏被关闭
+		 */
+		void onClose();
+		/**正在拖动
+		 * @param fraction 拖动距离的百分比
+		 */
+		void onDraging(float fraction);
+	}
+}
