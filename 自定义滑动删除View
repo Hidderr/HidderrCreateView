@@ -1,0 +1,356 @@
+package com.example.swipdelete.view;
+
+/**SwipeLayout的管理者
+ * @author Administrator
+ *
+ */
+public class SwipeLayoutManager {
+
+	private static SwipeLayoutManager mSM = new SwipeLayoutManager();//单例模式
+	/**
+	 * 用来记录当前打开的SwipeLayout
+	 */
+	private SwipeLayout currentSlayout;
+	
+	private SwipeLayoutManager(){}
+	/**获取SwipeLayoutManager的实例
+	 * @return SwipeLayoutManager
+	 */
+	public static SwipeLayoutManager getInstance(){
+		return mSM;
+	}
+	
+	/**赋值SwipeLayout
+	 * @param swipeLayout SwipeLayout
+	 */
+	public void setSwipeLayout(SwipeLayout swipeLayout){
+		this.currentSlayout = swipeLayout;
+	}
+	
+	/**
+	 * 清空当前记录的打开的SwipeLayoutManager
+	 */
+	public void clearCurrentSlayout(){
+		
+		currentSlayout=null;
+	}
+	
+	/**
+	 * 关闭当前打开的的SwipeLayout
+	 */
+	public void closeCurrentSlayout(){
+		if(currentSlayout!=null){
+			currentSlayout.close();
+		}
+		}
+		
+	
+	/**判断是否应该滑动 deleteView
+	 * @param swipeLayout 需要判断的 SwipeLayout
+	 * @return true SwipeLayout可以滑动   false SwipeLayout不可以滑动
+	 */
+	public boolean isShouldSwipe(SwipeLayout swipeLayout){
+		if(currentSlayout==null){//当前没有打开的SwipeLayout
+			return true;
+		}else {
+			return swipeLayout==currentSlayout;//判断是否是同一个SwipeLayout
+		}
+	}
+}
+
+工具类：
+package com.example.swipdelete.view;
+
+import android.content.Context;
+import android.support.v4.view.ViewCompat;
+import android.support.v4.widget.ViewDragHelper;
+import android.util.AttributeSet;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewDebug;
+import android.widget.FrameLayout;
+
+public class SwipeLayout extends FrameLayout {
+	/**
+	 * 滑动删除关闭状态
+	 */
+	private SwipeState currentState = SwipeState.CLOSE;
+	private ViewDragHelper mVdragHelper;
+	/**
+	 * SwipLayout子view  contentView
+	 */
+	private View contentView;
+	/**
+	 * SwipLayout子view deleteView
+	 */
+	private View deleteView;
+	/**
+	 * contentView的测量宽度
+	 */
+	private int contentWidth;
+	/**
+	 * deleteView的测量宽度
+	 */
+	private int deleteWidth;
+	/**
+	 * deleteView的测量高度
+	 */
+	private int deleteHeight;
+	private onSwipeStateChangeListener swipeListener;
+	private float downX;
+	private float downY;	
+	
+	public SwipeLayout(Context context) {
+		super(context);
+		init();
+	}
+	public SwipeLayout(Context context, AttributeSet attrs) {
+		super(context, attrs);
+		init();
+	}
+	public SwipeLayout(Context context, AttributeSet attrs, int defStyle) {
+		super(context, attrs, defStyle);
+		init();
+	}
+
+	enum SwipeState{
+		CLOSE,OPEN;
+	}
+	
+	/**
+	 * 创建ViewDragHelpr实例
+	 */
+	private void init() {
+		mVdragHelper = ViewDragHelper.create(this, cb);
+	}
+	
+	@Override
+	protected void onFinishInflate() {//获取ziView实例
+		contentView = getChildAt(0);
+		deleteView = getChildAt(1);
+	}
+	
+	@Override
+	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+		// TODO Auto-generated method stub
+		super.onSizeChanged(w, h, oldw, oldh);
+		contentWidth = contentView.getMeasuredWidth();
+		deleteWidth = deleteView.getMeasuredWidth();
+		deleteHeight = deleteView.getMeasuredHeight();
+	}
+	
+	@Override
+	protected void onLayout(boolean changed, int left, int top, int right,
+			int bottom) {
+//		contentView.layout(0, 0, contentWidth, deleteHeight);//放置contentView
+//		deleteView.layout(contentWidth, 0, contentWidth+deleteWidth, deleteHeight);//放置deleteView
+		contentView.layout(0, 0, contentWidth, deleteHeight);
+		deleteView.layout(contentView.getRight(), 0, contentView.getRight()
+				+ deleteWidth, deleteHeight);
+	}
+	
+	@Override
+	public boolean onInterceptTouchEvent(MotionEvent ev) {
+		// TODO Auto-generated method stub
+		boolean result = mVdragHelper.shouldInterceptTouchEvent(ev);
+		
+		//如果当前有打开的，则需要直接拦截，交给onTouch处理
+		if(!SwipeLayoutManager.getInstance().isShouldSwipe(SwipeLayout.this)){
+			SwipeLayoutManager.getInstance().closeCurrentSlayout();//关闭已经打开的SwipeLayout
+			return true;
+		}
+		return true;  
+	}
+	@Override
+	public boolean dispatchTouchEvent(MotionEvent ev) {
+		//如果当前的的SwipeLayout已经打开则不再执行以下逻辑
+				if(!SwipeLayoutManager.getInstance().isShouldSwipe(SwipeLayout.this)){
+					getParent().requestDisallowInterceptTouchEvent(true);//要求listView不要拦截
+					return true;
+				}
+				
+				switch (ev.getAction()) {
+				case MotionEvent.ACTION_DOWN:
+					downX = ev.getX();
+					downY = ev.getY();
+					break;
+				case MotionEvent.ACTION_MOVE:
+					//1.获取x和y方向移动的距离
+					float moveX = ev.getX();
+					float moveY = ev.getY();
+					float delatX = moveX - downX;//x方向移动的距离
+					float delatY = moveY - downY;//y方向移动的距离
+					if(Math.abs(delatX)>Math.abs(delatY)){
+						//表示移动是偏向于水平方向，那么应该SwipeLayout应该处理，请求listview不要拦截
+						getParent().requestDisallowInterceptTouchEvent(true);//要求listView不要拦截
+					}
+					//更新downX，downY
+					downX = moveX;
+					downY = moveY;
+					break;
+				case MotionEvent.ACTION_UP:
+					
+					break;
+				}
+		return super.dispatchTouchEvent(ev);
+	}
+	@Override
+	public boolean onTouchEvent(MotionEvent event) {
+		/*
+		 * //如果当前的的SwipeLayout已经打开则不再执行以下逻辑
+		if(!SwipeLayoutManager.getInstance().isShouldSwipe(SwipeLayout.this)){
+			requestDisallowInterceptTouchEvent(true);//要求listView不要拦截
+			return true;
+		}
+		
+		switch (event.getAction()) {
+		case MotionEvent.ACTION_DOWN:
+			downX = event.getX();
+			downY = event.getY();
+			break;
+		case MotionEvent.ACTION_MOVE:
+			//1.获取x和y方向移动的距离
+			float moveX = event.getX();
+			float moveY = event.getY();
+			float delatX = moveX - downX;//x方向移动的距离
+			float delatY = moveY - downY;//y方向移动的距离
+			if(Math.abs(delatX)>Math.abs(delatY)){
+				//表示移动是偏向于水平方向，那么应该SwipeLayout应该处理，请求listview不要拦截
+				requestDisallowInterceptTouchEvent(true);
+			}
+			//更新downX，downY
+			downX = moveX;
+			downY = moveY;
+			break;
+		case MotionEvent.ACTION_UP:
+			
+			break;
+		}
+		 */
+		mVdragHelper.processTouchEvent(event);
+		
+		return true;
+	}
+	
+	@Override
+	public void computeScroll() {
+		if(mVdragHelper.continueSettling(true)){//内部实现了滑动
+			ViewCompat.postInvalidateOnAnimation(SwipeLayout.this);//重绘
+		}
+	}
+	private ViewDragHelper.Callback cb = new ViewDragHelper.Callback() {
+		@Override
+		public boolean tryCaptureView(View child, int pointerId) {
+			// TODO Auto-generated method stub
+			return child==contentView || child ==deleteView;
+		}
+
+		@Override
+		public void onViewPositionChanged(View changedView, int left, int top,
+				int dx, int dy) {
+			/*if(changedView==contentView){//让deleteView随着contentView移动
+				deleteView.layout(deleteView.getLeft()+dx, deleteView.getTop()+dy,
+						deleteView.getRight()+dx, deleteView.getBottom()+dy);
+			}else if(changedView==deleteView){//让contentViewView随着deleteView移动
+				contentView.layout(contentView.getLeft()+dx, contentView.getTop()+dy,
+						contentView.getRight()+dx, contentView.getBottom()+dy);
+			}*/
+			
+			if(changedView==contentView){
+				//手动移动deleteView
+				deleteView.layout(deleteView.getLeft()+dx,deleteView.getTop()+dy,
+						deleteView.getRight()+dx, deleteView.getBottom()+dy);
+			}else if (deleteView==changedView) {
+				//手动移动contentView
+				contentView.layout(contentView.getLeft()+dx,contentView.getTop()+dy,
+						contentView.getRight()+dx, contentView.getBottom()+dy);
+			}
+			
+			if(contentView.getLeft()==-deleteWidth && currentState!=SwipeState.OPEN){
+				currentState=SwipeState.OPEN;//更改状态
+				if(swipeListener!=null){swipeListener.onOpen(getTag());//回调打开方法
+				
+				}
+				//当前的Swipelayout已经打开，需要让Manager记录一下下
+				SwipeLayoutManager.getInstance().setSwipeLayout(SwipeLayout.this);//记录打开的SwipeLayout
+			}else if(contentView.getLeft()==0 && currentState!=SwipeState.CLOSE){
+				currentState=SwipeState.CLOSE;//更改状态
+				if(swipeListener!=null){swipeListener.onClose(getTag());}//回调关闭方法
+				//说明当前的SwipeLayout已经关闭，需要让Manager清空一下
+				SwipeLayoutManager.getInstance().clearCurrentSlayout();//清除已经打开的SwipeLayout记录
+			}
+			
+		}
+
+		@Override
+		public void onViewReleased(View releasedChild, float xvel, float yvel) {
+			if(contentView.getLeft()<-deleteWidth/2){
+				open();//执行打开动画
+				
+			}else{
+				close();//执行关闭动画
+			}
+		}
+
+		@Override
+		public int getViewHorizontalDragRange(View child) {
+			// TODO Auto-generated method stub
+			return deleteWidth;
+		}
+
+		@Override
+		public int clampViewPositionHorizontal(View child, int left, int dx) {
+			if(child==contentView){//限制contentView移动范围-deleteWidth<range<0
+				if(left<-deleteWidth)left=-deleteWidth;
+				if(left>0)left=0;
+			}else if(child==deleteView){//限制deleteView的移动范围 contentWidth-deleteWidth<range<contenWidth
+				if(left<contentWidth-deleteWidth)left=contentWidth-deleteWidth;
+				if(left>contentWidth)left=contentWidth;
+			}
+			return left;
+		}
+		
+	};
+
+
+	
+	/**
+	 * 执行动画让contentView关闭
+	 */
+	protected void open() {
+		mVdragHelper.smoothSlideViewTo(contentView, -deleteWidth, contentView.getTop());
+		ViewCompat.postInvalidateOnAnimation(SwipeLayout.this);
+	}
+	/**
+	 * 执行动画让contentView恢复原来位置
+	 */
+	protected void close() {
+		mVdragHelper.smoothSlideViewTo(contentView, 0, contentView.getTop());
+		ViewCompat.postInvalidateOnAnimation(SwipeLayout.this);
+		
+	}
+	/**设置deletView是关闭还是打开的监听
+	 * @param swipeListener onSwipeStateChangeListener
+	 */
+	public void setonSwipeStateChangeListener(onSwipeStateChangeListener swipeListener){
+		this.swipeListener = swipeListener;
+		
+	}
+	/**监听deletView是关闭还是打开的接口
+	 * @author Administrator
+	 *
+	 */
+	public interface onSwipeStateChangeListener{
+		/**
+		 * 滑动删除打开
+		 * @param object 
+		 */
+		void onOpen(Object tag);
+		/**
+		 * 滑动删除关闭
+		 * @param object 
+		 */
+		void onClose(Object tag);
+	}
+	
+}
