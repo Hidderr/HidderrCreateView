@@ -1,0 +1,284 @@
+工具类：
+
+/**
+ * 几何图形工具
+ */
+public class GeometryUtil {
+	
+	/**
+	 * As meaning of method name.
+	 * 获得两点之间的距离
+	 * @param p0
+	 * @param p1
+	 * @return
+	 */
+	public static float getDistanceBetween2Points(PointF p0, PointF p1) {
+		float distance = (float) Math.sqrt(Math.pow(p0.y - p1.y, 2) + Math.pow(p0.x - p1.x, 2));
+		return distance;
+	}
+	
+	/**
+	 * Get middle point between p1 and p2.
+	 * 获得两点连线的中点
+	 * @param p1
+	 * @param p2
+	 * @return
+	 */
+	public static PointF getMiddlePoint(PointF p1, PointF p2) {
+		return new PointF((p1.x + p2.x) / 2.0f, (p1.y + p2.y) / 2.0f);
+	}
+	
+	/**
+	 * Get point between p1 and p2 by percent.
+	 * 根据百分比获取两点之间的某个点坐标
+	 * @param p1
+	 * @param p2
+	 * @param percent
+	 * @return
+	 */
+	public static PointF getPointByPercent(PointF p1, PointF p2, float percent) {
+		return new PointF(evaluateValue(percent, p1.x , p2.x), evaluateValue(percent, p1.y , p2.y));
+	}
+	
+	/**
+	 * 根据分度值，计算从start到end中，fraction位置的值。fraction范围为0 -> 1
+	 * @param fraction
+	 * @param start
+	 * @param end
+	 * @return
+	 */
+	public static float evaluateValue(float fraction, Number start, Number end){
+		return start.floatValue() + (end.floatValue() - start.floatValue()) * fraction;
+	}
+	
+	
+	/**
+	 * Get the point of intersection between circle and line.
+	 * 获取 通过指定圆心，斜率为lineK的直线与圆的交点。
+	 * 
+	 * @param pMiddle The circle center point.
+	 * @param radius The circle radius.
+	 * @param lineK The slope of line which cross the pMiddle.
+	 * @return
+	 */
+	public static PointF[] getIntersectionPoints(PointF pMiddle, float radius, Double lineK) {
+		PointF[] points = new PointF[2];
+		
+		float radian, xOffset = 0, yOffset = 0; 
+		if(lineK != null){
+			radian= (float) Math.atan(lineK);//得到该角的角度
+			xOffset = (float) (Math.sin(radian) * radius);//得到对边的长
+			yOffset = (float) (Math.cos(radian) * radius);//得到邻边的长
+		}else {
+			xOffset = radius;
+			yOffset = 0;
+		}
+		points[0] = new PointF(pMiddle.x + xOffset, pMiddle.y - yOffset);
+		points[1] = new PointF(pMiddle.x - xOffset, pMiddle.y + yOffset);
+		
+		return points;
+	}
+}
+
+工具类：
+public class Utils {
+
+	public static Toast mToast;
+
+	public static void showToast(Context mContext, String msg) {
+		if (mToast == null) {
+			mToast = Toast.makeText(mContext, "", Toast.LENGTH_SHORT);
+		}
+		mToast.setText(msg);
+		mToast.show();
+	}
+	
+	/**
+	 * dip 转换成 px
+	 * @param dip
+	 * @param context
+	 * @return
+	 */
+	public static float dip2Dimension(float dip, Context context) {
+		DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
+		return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dip, displayMetrics);
+	}
+	/**
+	 * @param dip
+	 * @param context
+	 * @param complexUnit {@link TypedValue#COMPLEX_UNIT_DIP} {@link TypedValue#COMPLEX_UNIT_SP}}
+	 * @return
+	 */
+	public static float toDimension(float dip, Context context, int complexUnit) {
+		DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
+		return TypedValue.applyDimension(complexUnit, dip, displayMetrics);
+	}
+
+	
+	public static float getStatusBarHeight(Resources resources){
+		int status_bar_height_id = resources.getIdentifier("status_bar_height", "dimen", "android");
+		return resources.getDimension(status_bar_height_id);
+	}
+
+}
+自定义贝塞尔曲线的View
+public class GooView extends View {
+
+	public GooView(Context context) {
+		super(context);
+		init();
+	}
+
+	public GooView(Context context, AttributeSet attrs) {
+		super(context, attrs);
+		init();
+	}
+
+	public GooView(Context context, AttributeSet attrs, int defStyle) {
+		super(context, attrs, defStyle);
+		init();
+	}  
+
+	private float dragRadius = 20f;//拖拽圆的半径
+	private float stickyRadius = 20f;//固定圆的半径
+	private PointF dragCenter = new PointF(150f, 320f);//拖拽圆的圆心
+	private PointF stickyCenter = new PointF(200f, 320f);//固定圆的圆心
+	
+	private PointF[] stickyPoint = {new PointF(150f, 108f),new PointF(150f, 132f)};
+	private PointF[] dragPoint = {new PointF(100f, 108f),new PointF(100f, 132f)};
+	
+	private PointF controlPoint = new PointF(125f, 120f);
+	
+	private double lineK;//斜率
+	private void init() {
+		paint = new Paint(Paint.ANTI_ALIAS_FLAG);//设置抗锯齿
+		paint.setColor(Color.RED);//设置红色
+	}
+	
+	@Override
+	protected void onDraw(Canvas canvas) {
+		/*
+		 * 1.让画布向屏幕上方移动状态栏的高度，因为在onTouchEvent中使用getRaw()
+		 * 相对屏幕的坐标，所以要移动画布，不然绘制的内容，在触摸点下方
+		 */
+		canvas.translate(0,-Utils.getStatusBarHeight(getResources()) );
+		
+		stickyRadius = getStickyRadius();//动态获取固定圆的半径
+		
+		/*
+		 * 2.求出斜率
+		 */
+		float offx = dragCenter.x - stickyCenter.x;
+		float offy = dragCenter.y - stickyCenter.y;
+		if(offx!=0){//防止水平差值为0
+			lineK = offx/offy;
+		}
+		
+		/*
+		 * 3.根据斜率，求出穿过圆心的直线与圆两个交点坐标
+		 */
+		dragPoint = GeometryUtil.getIntersectionPoints(dragCenter, dragRadius, lineK);
+		stickyPoint = GeometryUtil.getIntersectionPoints(stickyCenter, stickyRadius, lineK);
+		
+		/*
+		 * 4.动态求出控制点，贝塞尔曲线需要控制点
+		 * 即根据两个坐标以及百分比，求出坐标
+		 * 0.618是黄金分割点
+		 */
+		controlPoint = GeometryUtil.getPointByPercent(dragCenter, stickyCenter, 0.618f);
+		
+		canvas.drawCircle(dragCenter.x,dragCenter.y, dragRadius, paint);//5.绘制拖拽圆
+		
+		/*
+		 * 6.当拖拽没有超出限制范围，则绘制固定圆以及贝塞尔曲线
+		 */
+		if(!isDragOutOfRange){
+			canvas.drawCircle(stickyCenter.x,stickyCenter.y, stickyRadius, paint);//绘制固定圆
+			
+			Path path  = new Path();//使用贝塞尔曲线，连接两个圆
+			path.moveTo(stickyPoint[0].x, stickyPoint[0].y);//设置起点
+			path.quadTo(controlPoint.x, controlPoint.y, dragPoint[0].x, dragPoint[0].y);//设置控制点，和终点
+			path.lineTo(dragPoint[1].x, dragPoint[1].y);//将上一个终点与此点连接
+			path.quadTo(controlPoint.x, controlPoint.y, stickyPoint[1].x, stickyPoint[1].y);//设置控制点和终点
+			//path.close();//默认闭合不用调用
+			canvas.drawPath(path, paint);//绘制曲线
+		}
+		
+		/*
+		 * 绘制边界圆，以固定圆为圆心，以限制范围为半径，画空心圆
+		 */
+		paint.setStyle(Style.STROKE);//设置画笔，画边框
+		canvas.drawCircle(stickyCenter.x, stickyCenter.y, maxDistance, paint);
+		paint.setStyle(Style.FILL);//设置画笔，画实心
+	}
+
+	private float maxDistance = 200;
+	/**根据动态拖拽圆距离固定圆的距离的百分比
+	 * 来动态改变固定圆的半径
+	 * @return 固定圆的半径
+	 */
+	private float getStickyRadius(){
+		float radius ;
+		float centerDistance = GeometryUtil.getDistanceBetween2Points(dragCenter, stickyCenter);
+		float fraction = centerDistance/maxDistance;
+		radius = GeometryUtil.evaluateValue(fraction, 20, 4);
+		return radius;
+		
+	}
+	
+	private boolean isDragOutOfRange = false;
+	private Paint paint;
+	@Override
+	public boolean onTouchEvent(MotionEvent event) {
+		/*
+		 * 根据用户拖拽，来设置拖拽圆的圆心坐标，
+		 * 同时判断用户是否拖拽超出限定范围，超出则断开贝塞尔曲线，
+		 * 否则则以动画形式恢复
+		 */
+		switch (event.getAction()) {
+		case MotionEvent.ACTION_DOWN:
+			isDragOutOfRange = false;
+			dragCenter.set(event.getRawX(), event.getRawY());
+			break;
+		case MotionEvent.ACTION_MOVE:
+			dragCenter.set(event.getRawX(), event.getRawY());
+			if(GeometryUtil.getDistanceBetween2Points(dragCenter, stickyCenter)>maxDistance){
+				isDragOutOfRange = true;//超出范围,断掉贝塞尔曲线
+			}
+			break;
+		case MotionEvent.ACTION_UP:
+			if(GeometryUtil.getDistanceBetween2Points(dragCenter, stickyCenter)>maxDistance){
+				dragCenter.set(stickyCenter.x, stickyCenter.y);//将拖拽圆与固定圆重合，返回无动画
+			}else{
+				if(isDragOutOfRange){
+					//拖拽抬起前曾超出限定范围，
+					dragCenter.set(stickyCenter.x, stickyCenter.y);//将拖拽圆与固定圆重合，返回无动画
+				}else{
+					//执行返回动画
+					ValueAnimator animator = ValueAnimator.ofFloat(0,1);
+					final PointF start = new PointF(dragCenter.x, dragCenter.y);
+					animator.addUpdateListener(new AnimatorUpdateListener() {
+						
+						@Override
+						public void onAnimationUpdate(ValueAnimator arg0) {
+							// TODO Auto-generated method stub
+							float fraction  = arg0.getAnimatedFraction();
+							
+							PointF pointf = GeometryUtil.getPointByPercent(start, stickyCenter, fraction);
+							dragCenter.set(pointf);//设置坐标
+							invalidate();
+						}
+					});
+					animator.setDuration(500);
+					animator.setInterpolator(new OvershootInterpolator());//设置插补器
+					animator.start();
+				}
+			}
+			break;
+
+		
+		}
+		invalidate();//重绘
+		return true;
+	}
+}
